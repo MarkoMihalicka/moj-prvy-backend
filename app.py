@@ -1,145 +1,209 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
+import os
+import psycopg2
+import json
+import psycopg2.extras
+from groq import Groq
 
 app = Flask(__name__)
 CORS(app)
 
-client = OpenAI(api_key="TVOJ_API_KLUC")
+# ======================
+# 🔐 AI CLIENT
+# ======================
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# 📦 DATABÁZA
-databaza = {
-    "students": [
-        {
-            "id": 1,
-            "name": "Adrian",
-            "surname": "Červenka",
-            "nickname": "chilli peppers",
-            "image": "https://www.odzadu.sk/wp-content/uploads/2026/03/adrian-zo-sou-ruza-pre-nevestu.jpg"
-        },
-        {
-            "id": 2,
-            "name": "Janka",
-            "surname": "Špenáová",
-            "nickname": None,
-            "image": "https://www.stvr.sk/media/a501/image/file/1/1000/janka-pcs.jpg"
-        },
-        {
-            "id": 3,
-            "name": "Markus",
-            "surname": "Martiš",
-            "nickname": "cigga",
-            "image": "https://pbs.twimg.com/media/GYpgQMJXQAAtqkP.jpg"
-        },
-        {
-            "id": 4,
-            "name": "Elizabeth",
-            "surname": "RolsRojs",
-            "nickname": "queen",
-            "image": "https://img.topky.sk/320px/1164133.jpg"
-        },
-        {
-            "id": 5,
-            "name": "Versace",
-            "surname": "Klúčenka",
-            "nickname": "Gucci",
-            "image": "https://cdn.britannica.com/24/270724-050-ADD7DC96/donatella-versace-2024-vanity-fair-oscar-party-march-10-2024-beverly-hills-california.jpg"
-        },
-        {
-            "id": 6,
-            "name": "Ctibor",
-            "surname": "Cyril",
-            "nickname": "Čvajgla",
-            "image": "https://www.asb.sk/wp-content/uploads/2023/01/ASB_05_10_2022_-6-of-9-min-e1669667094611.jpg"
-        },
-        {
-            "id": 7,
-            "name": "Lukáš",
-            "surname": "Sfúkaš",
-            "nickname": None,
-            "image": "https://upload.wikimedia.org/wikipedia/commons/3/34/Luk%C3%A1%C5%A1_Latin%C3%A1k_2015.jpg"
-        },
-        {
-            "id": 8,
-            "name": "Roman",
-            "surname": "Evka",
-            "nickname": "detičky krásne",
-            "image": "https://img.topky.sk/320px/1039568.jpg"
-        },
-        {
-            "id": 9,
-            "name": "Tomáš",
-            "surname": "Maštalír",
-            "nickname": "herec",
-            "image": None
-        },
-        {
-            "id": 10,
-            "name": "Patrik",
-            "surname": "Vrbovský",
-            "nickname": "Rytmus",
-            "image": "https://i1.sndcdn.com/avatars-000003218454-hyqoka-t1080x1080.jpg"
-        }
+# ======================
+# 🗄️ POSTGRES CONNECT
+# ======================
+conn = psycopg2.connect(
+    dbname=os.getenv("DB_NAME"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    host=os.getenv("DB_HOST"),
+    port="5432",
+    sslmode="require"
+)
+
+conn.autocommit = True
+cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+# ======================
+# 🧱 INIT TABLE
+# ======================
+cur.execute("""
+CREATE TABLE IF NOT EXISTS students (
+    id INT PRIMARY KEY,
+    name TEXT,
+    surname TEXT,
+    nickname TEXT,
+    image TEXT,
+    personality TEXT,
+    style TEXT,
+    moods JSONB
+);
+""")
+
+# ======================
+# 🔥 SEED DATA
+# ======================
+def seed_data():
+
+    cur.execute("SELECT COUNT(*) FROM students")
+    count = cur.fetchone()["count"]
+
+    if count > 0:
+        return
+
+    students = [
+        (1, "Adrian", "Červenka", "chilli peppers",
+         "https://www.odzadu.sk/wp-content/uploads/2026/03/adrian-zo-sou-ruza-pre-nevestu.jpg",
+         "sebavedomý frajer", "krátke správy 😎",
+         {"neutral":"ego","flirt":"sexy ego","friendly":"fake friend","nahnevana":"arogantný"}),
+
+        (2, "Janka", "Špenáová", "Špeňa",
+         "https://www.stvr.sk/media/a501/image/file/1/1000/janka-pcs.jpg",
+         "milá kuchárka", "emoji 😂❤️",
+         {"neutral":"veselá","flirt":"cute","friendly":"ukecaná","nahnevana":"pasívna agresia"}),
+
+        (3, "Markus", "Martiš", "cigga",
+         "https://pbs.twimg.com/media/GYpgQMJXQAAtqkP.jpg",
+         "model hráč", "flirt 😏",
+         {"neutral":"ready","flirt":"extreme","friendly":"cool","nahnevana":"ignore"}),
+
+        (4, "Elizabeth", "RolsRojs", "queen",
+         "https://img.topky.sk/320px/1164133.jpg",
+         "chaos party girl", "emoji 😂🔥",
+         {"neutral":"random","flirt":"wild","friendly":"hyper","nahnevana":"toxic"}),
+
+        (5, "Versace", "Klúčenka", "Gucci",
+         "https://cdn.britannica.com/24/270724-050-ADD7DC96/donatella-versace-2024-vanity-fair-oscar-party-march-10-2024-beverly-hills-california.jpg",
+         "luxus diva", "💅",
+         {"neutral":"high class","flirt":"luxury","friendly":"fake nice","nahnevana":"elite rage"}),
+
+        (6, "Ctibor", "Cyril", "Čvajgla",
+         "https://www.asb.sk/wp-content/uploads/2023/01/ASB_05_10_2022_-6-of-9-min-e1669667094611.jpg",
+         "starší muž", "pokojný",
+         {"neutral":"serious","flirt":"secret","friendly":"wise","nahnevana":"closed"}),
+
+        (7, "Lukáš", "Sfúkaš", "Bongo",
+         "https://upload.wikimedia.org/wikipedia/commons/3/34/Luk%C3%A1%C5%A1_Latin%C3%A1k_2015.jpg",
+         "vtipný chaos", "😂",
+         {"neutral":"random","flirt":"weird","friendly":"funny","nahnevana":"sarkazmus"}),
+
+        (8, "Roman", "Evka", "detičky krásne",
+         "https://img.topky.sk/320px/1039568.jpg",
+         "emocionálny", "😢",
+         {"neutral":"smutný","flirt":"intense","friendly":"citlivý","nahnevana":"drama"}),
+
+        (9, "Tomáš", "Maštalír", "herec",
+         "https://image.smedata.sk/image/w625-h0/1ef88af3-e0d8-6470-9f8e-7b51221e482c.jpg",
+         "normálny chill", "normálne",
+         {"neutral":"ok","flirt":"light","friendly":"nice","nahnevana":"short"}),
+
+        (10, "Patrik", "Vrbovský", "Rytmus",
+         "https://i1.sndcdn.com/avatars-000003218454-hyqoka-t1080x1080.jpg",
+         "troll rapper", "irónia 😂",
+         {"neutral":"funny","flirt":"sarcasm","friendly":"troll","nahnevana":"attack"}),
     ]
-}
 
+    cur.executemany("""
+        INSERT INTO students (id, name, surname, nickname, image, personality, style, moods)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+    """, [
+        (s[0], s[1], s[2], s[3], s[4], s[5], s[6], json.dumps(s[7]))
+        for s in students
+    ])
+
+seed_data()
+
+# ======================
+# 📥 GET STUDENTS
+# ======================
 @app.route("/students", methods=["GET"])
 def get_students():
-    return jsonify(databaza)
 
-@app.route("/")
-def home():
-    return "Backend beží 🚀"
+    sort = request.args.get("sort", "id_asc")
 
+    cur.execute("SELECT * FROM students")
+    rows = cur.fetchall()
 
-# 🤖 AI CHAT
+    for s in rows:
+        s["age"] = 18 + s["id"]
+
+    if sort == "name_asc":
+        rows.sort(key=lambda x: x["name"])
+
+    elif sort == "name_desc":
+        rows.sort(key=lambda x: x["name"], reverse=True)
+
+    elif sort == "age_asc":
+        rows.sort(key=lambda x: x["age"])
+
+    elif sort == "age_desc":
+        rows.sort(key=lambda x: x["age"], reverse=True)
+
+    else:
+        rows.sort(key=lambda x: x["id"])
+
+    return jsonify({"students": rows})
+
+# ======================
+# 💬 CHAT AI
+# ======================
 @app.route("/chat", methods=["POST"])
 def chat():
+
     data = request.get_json()
+
     user_message = data.get("message")
-    person_id = data.get("person_id")
+    character = data.get("character")
+    mood = data.get("mood", "neutral")
 
-    # 🎭 PERSONALITY podľa ID
-    personalities = {
-        1: """Si Adrian. Extrémne drzý, sarkastický, robíš si srandu z usera. Krátke odpovede.""",
+    if not character:
+        return jsonify({"reply": "Chýba postava 💀"})
 
-        2: """Si Janka. Si milá, pozitívna, trochu flirtuješ a používaš emoji ❤️""",
+    mood_description = character.get("moods", {}).get(mood, "normal")
 
-        3: """Si Markus. Si troll, robíš si srandu zo všetkého a nič neberieš vážne 😂""",
+    system_prompt = f"""
+    Si {character["name"]} {character["surname"]} ({character["nickname"]}).
 
-        4: """Si Elizabeth. Si elegantná, bohatá vibe, rozprávaš ako queen 👑""",
+    Osobnosť: {character["personality"]}
+    Štýl: {character["style"]}
+    Nálada: {mood_description}
 
-        5: """Si Versace. Si fashion diva, riešiš luxus, značky a štýl 💅""",
-
-        6: """Si Ctibor. Si starší múdry chlap, rozprávaš ako filozof 🤔""",
-
-        7: """Si Lukáš. Si funny týpek, robíš jokes nonstop 😄""",
-
-        8: """Si Roman. Si creepy týpek čo píše divné veci 💀""",
-
-        9: """Si Tomáš. Si normálny chill guy, nič neriešiš 😎""",
-
-        10: """Si Rytmus. Si sebavedomý rapper vibe, flexíš 💸"""
-    }
-
-    system_prompt = personalities.get(person_id, "Si normálny človek.")
+    PRAVIDLÁ:
+    - krátke odpovede
+    - emoji 😎
+    - roleplay
+    """
 
     try:
+
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
-            ]
+            ],
+            temperature=0.9,
+            max_completion_tokens=200
         )
 
-        reply = completion.choices[0].message.content
-        return jsonify({"reply": reply})
+        return jsonify({
+            "reply": completion.choices[0].message.content
+        })
 
     except Exception as e:
-        print(e)
-        return jsonify({"reply": "AI sa zasekla 💀"})
+        return jsonify({"reply": str(e)})
 
-
+# ======================
+# 🚀 RUN
+# ======================
 if __name__ == "__main__":
-    app.run(debug=True)
+
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000))
+    )
