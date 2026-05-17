@@ -57,6 +57,7 @@ def seed_data():
         return
 
     students = [
+
         (1, "Adrian", "Červenka", "chilli peppers",
          "https://www.odzadu.sk/wp-content/uploads/2026/03/adrian-zo-sou-ruza-pre-nevestu.jpg",
          "sebavedomý frajer", "krátke správy 😎",
@@ -109,10 +110,22 @@ def seed_data():
     ]
 
     cur.executemany("""
-        INSERT INTO students (id, name, surname, nickname, image, personality, style, moods)
+        INSERT INTO students
+        (id, name, surname, nickname, image, personality, style, moods)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
     """, [
-        (s[0], s[1], s[2], s[3], s[4], s[5], s[6], json.dumps(s[7]))
+
+        (
+            s[0],
+            s[1],
+            s[2],
+            s[3],
+            s[4],
+            s[5],
+            s[6],
+            json.dumps(s[7])
+        )
+
         for s in students
     ])
 
@@ -121,34 +134,71 @@ seed_data()
 # ======================
 # 📥 GET STUDENTS
 # ======================
+
+# 🔥 VLASTNÝ BUBBLE SORT
+def bubble_sort(data, key, reverse=False):
+
+    n = len(data)
+
+    for i in range(n):
+
+        for j in range(0, n - i - 1):
+
+            a = data[j][key]
+            b = data[j + 1][key]
+
+            swap = False
+
+            if reverse:
+
+                if str(a).lower() < str(b).lower():
+                    swap = True
+
+            else:
+
+                if str(a).lower() > str(b).lower():
+                    swap = True
+
+            if swap:
+                data[j], data[j + 1] = data[j + 1], data[j]
+
+    return data
+
+
 @app.route("/students", methods=["GET"])
 def get_students():
 
-    sort = request.args.get("sort", "id_asc")
+    sort = request.args.get("sort", "id").strip().lower()
 
     cur.execute("SELECT * FROM students")
     rows = cur.fetchall()
 
+    # fake vek
     for s in rows:
         s["age"] = 18 + s["id"]
 
+    print("SORT:", repr(sort))  # debug
+
+    # ======================
+    # SORTING
+    # ======================
+
     if sort == "name_asc":
-        rows.sort(key=lambda x: x["name"])
+        rows = sorted(rows, key=lambda x: x["name"].lower())
 
     elif sort == "name_desc":
-        rows.sort(key=lambda x: x["name"], reverse=True)
+        rows = sorted(rows, key=lambda x: x["name"].lower(), reverse=True)
 
     elif sort == "age_asc":
-        rows.sort(key=lambda x: x["age"])
+        rows = sorted(rows, key=lambda x: x["age"])
 
     elif sort == "age_desc":
-        rows.sort(key=lambda x: x["age"], reverse=True)
+        rows = sorted(rows, key=lambda x: x["age"], reverse=True)
 
     else:
-        rows.sort(key=lambda x: x["id"])
+        rows = sorted(rows, key=lambda x: x["id"])
 
     return jsonify({"students": rows})
-
 # ======================
 # 💬 CHAT AI
 # ======================
@@ -174,9 +224,10 @@ def chat():
     Nálada: {mood_description}
 
     PRAVIDLÁ:
-    - krátke odpovede
+    - krátke odpovede (1–2 vety)
     - emoji 😎
     - roleplay
+    - nikdy nevychádzaj z role
     """
 
     try:
@@ -196,7 +247,10 @@ def chat():
         })
 
     except Exception as e:
-        return jsonify({"reply": str(e)})
+
+        return jsonify({
+            "reply": str(e)
+        })
 
 # ======================
 # 🚀 RUN
