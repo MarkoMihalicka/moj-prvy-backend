@@ -179,7 +179,7 @@ def get_students():
 
     print("SORT:", repr(sort))  # debug
 
-    # ======================
+   # ======================
     # SORTING
     # ======================
 
@@ -195,10 +195,8 @@ def get_students():
     elif sort == "age_desc":
         rows = sorted(rows, key=lambda x: x["age"], reverse=True)
 
-    else:
+    else:  # Sem padne "id_asc", "id" alebo hocičo iné
         rows = sorted(rows, key=lambda x: x["id"])
-
-    return jsonify({"students": rows})
 # ======================
 # 💬 CHAT AI
 # ======================
